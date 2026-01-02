@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC 预测与新闻情绪分析</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; padding: 20px; margin-bottom: 20px; }
+        .header h1 { color: #00d4ff; font-size: 28px; margin-bottom: 10px; }
+        .header p { color: #888; font-size: 14px; }
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        .tip-box {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid #00d4ff;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #00d4ff;
+        }
+        .debug-box {
+            background: rgba(255, 255, 0, 0.15);
+            border: 2px solid yellow;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: yellow;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        #plotlyChart { width: 100%; height: 750px; }
+        .news-popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%);
+            border: 2px solid #00d4ff;
+            border-radius: 15px;
+            padding: 0;
+            min-width: 500px;
+            max-width: 700px;
+            max-height: 80vh;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            overflow: hidden;
+            pointer-events: auto;
+        }
+        .popup-header {
+            background: linear-gradient(90deg, #00d4ff 0%, #0099cc 100%);
+            color: #0d1b2a;
+            padding: 15px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .popup-close {
+            background: rgba(0,0,0,0.2);
+            border: none;
+            color: #0d1b2a;
+            font-size: 24px;
+            cursor: pointer;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+        .popup-close:hover { background: rgba(0,0,0,0.4); transform: rotate(90deg); }
+        .popup-content { padding: 15px 20px; max-height: 60vh; overflow-y: auto; }
+        .news-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-left: 4px solid #00d4ff;
+            transition: all 0.3s;
+        }
+        .news-item:hover {
+            background: rgba(0, 212, 255, 0.15);
+            transform: translateX(5px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.2);
+        }
+        .news-meta { display: flex; gap: 15px; margin-bottom: 8px; font-size: 12px; }
+        .news-source { color: #ffd700; font-weight: bold; }
+        .news-time { color: #888; }
+        .news-link { 
+            color: #e0e0e0; 
+            text-decoration: none; 
+            font-size: 14px; 
+            line-height: 1.5; 
+            display: block;
+            cursor: pointer;
+        }
+        .news-link:hover { color: #00d4ff; text-decoration: underline; }
+        .news-arrow { color: #00d4ff; margin-left: 8px; }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+            pointer-events: auto;
+        }
+        .sentiment-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .sentiment-positive { background: #27ae60; color: white; }
+        .sentiment-negative { background: #e74c3c; color: white; }
+        .sentiment-neutral { background: #95a5a6; color: white; }
+        .no-news { text-align: center; padding: 30px; color: #888; }
+        .popup-content::-webkit-scrollbar { width: 8px; }
+        .popup-content::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+        .popup-content::-webkit-scrollbar-thumb { background: #00d4ff; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 BTC/USDT 预测与新闻情绪分析</h1>
+            <p>基于 Kronos 模型 + 新闻情绪修正 | 数据更新时间: 2025-12-31 22:02:13</p>
+        </div>
+        <div class="chart-container">
+            <div class="tip-box">
+                💡 <strong>提示：</strong>点击下方情绪柱状图的柱子，可弹出该情绪评分对应的所有新闻链接
+            </div>
+            <div class="debug-box" id="debugBox">🔍 正在加载...</div>
+            <div id="plotlyChart"></div>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay"></div>
+    <div class="news-popup" id="newsPopup">
+        <div class="popup-header">
+            <span id="popupTitle">新闻列表</span>
+            <button class="popup-close" onclick="window.closePopup()">×</button>
+        </div>
+        <div class="popup-content" id="popupContent"></div>
+    </div>
+
+    <script type="text/javascript">
+        // 全局变量
+        window.newsData = {"-2": [{"title": "David Beckham-backed supplements firm quits Bitcoin buying strategy after raising $48 million", "url": "https://cryptopanic.com/search?q=David%20Beckham-backed%20supplements%20firm%20quits%20Bitcoin%20buying%20strategy%20after%20raising%20%2448%20million", "source": "CryptoPanic", "time": "12-30 20:55"}, {"title": "David Beckham-backed stock slips after latest announcement", "url": "https://cryptopanic.com/search?q=David%20Beckham-backed%20stock%20slips%20after%20latest%20announcement", "source": "CryptoPanic", "time": "12-30 20:33"}, {"title": "Bitcoin(BTC) Drops Below 88,000 USDT with a Narrowed 0.38% Increase in 24 Hours", "url": "https://cryptopanic.com/search?q=Bitcoin%28BTC%29%20Drops%20Below%2088%2C000%20USDT%20with%20a%20Narrowed%200.38%25%20Increase%20in%2024%20Hours", "source": "CryptoPanic", "time": "12-30 19:10"}], "0": [{"title": "$BTC Weeks later and there has indeed not been a change in price.\n\nI think the action comes back in 1-2 weeks so just be ready for that. For now, enjoy the rest and New Year's coming up ️", "url": "https://cryptopanic.com/search?q=%24BTC%20Weeks%20later%20and%20there%20has%20indeed%20not%20been%20a%20change%20in%20price.%0A%0AI%20think%20the%20action%20comes%20back%20in%201-2%20weeks%20so%20just%20be%20ready%20for%20that.%20For%20now%2C%20enjoy%20the%20rest%20and%20New%20Year%27s%20coming%20up%20%EF%B8%8F", "source": "CryptoPanic", "time": "12-30 20:54"}, {"title": "Long-Term Bitcoin Holders Pause Selling for First Time in Months: Here is the Bullish Question", "url": "https://cryptopanic.com/search?q=Long-Term%20Bitcoin%20Holders%20Pause%20Selling%20for%20First%20Time%20in%20Months%3A%20Here%20is%20the%20Bullish%20Question", "source": "CryptoPanic", "time": "12-30 20:50"}, {"title": "$415 Million Bitcoin End-of-Year Purchases Spotted as BTC Price Signals Rebound", "url": "https://cryptopanic.com/search?q=%24415%20Million%20Bitcoin%20End-of-Year%20Purchases%20Spotted%20as%20BTC%20Price%20Signals%20Rebound", "source": "CryptoPanic", "time": "12-30 20:48"}, {"title": "Bitcoin’s Quiet Selling: Why This Isn’t a Distribution Phase", "url": "https://cryptopanic.com/search?q=Bitcoin%E2%80%99s%20Quiet%20Selling%3A%20Why%20This%20Isn%E2%80%99t%20a%20Distribution%20Phase", "source": "CryptoPanic", "time": "12-30 20:22"}, {"title": "Why Bitcoin could remain choppy despite the end of LTH sell-off", "url": "https://cryptopanic.com/search?q=Why%20Bitcoin%20could%20remain%20choppy%20despite%20the%20end%20of%20LTH%20sell-off", "source": "CryptoPanic", "time": "12-30 20:00"}, {"title": "Best crypto casinos for altcoin users (BTC, ETH, SOL, DOGE, SHIB)", "url": "https://cryptopanic.com/search?q=Best%20crypto%20casinos%20for%20altcoin%20users%20%28BTC%2C%20ETH%2C%20SOL%2C%20DOGE%2C%20SHIB%29", "source": "CryptoPanic", "time": "12-30 19:50"}, {"title": "Trust Wallet Compensates Users After Chrome Extension Exploit", "url": "https://cryptopanic.com/search?q=Trust%20Wallet%20Compensates%20Users%20After%20Chrome%20Extension%20Exploit", "source": "CryptoPanic", "time": "12-30 19:21"}, {"title": "Donald Trump's 2025 Crypto Playbook: Here's Every Major Move He Made", "url": "https://cryptopanic.com/search?q=Donald%20Trump%27s%202025%20Crypto%20Playbook%3A%20Here%27s%20Every%20Major%20Move%20He%20Made", "source": "CryptoPanic", "time": "12-30 19:10"}, {"title": "Bitcoin Bull Run Could Last Until 2027, Rare Signal Suggests", "url": "https://cryptopanic.com/search?q=Bitcoin%20Bull%20Run%20Could%20Last%20Until%202027%2C%20Rare%20Signal%20Suggests", "source": "CryptoPanic", "time": "12-30 19:05"}, {"title": "The Year in Bitcoin and Crypto ATMs 2025: Power Tools, Scams and Calls for Action", "url": "https://cryptopanic.com/search?q=The%20Year%20in%20Bitcoin%20and%20Crypto%20ATMs%202025%3A%20Power%20Tools%2C%20Scams%20and%20Calls%20for%20Action", "source": "CryptoPanic", "time": "12-30 19:01"}, {"title": "Why Bitcoin’s Price Still Controls the Crypto Industry, According to Novogratz", "url": "https://cryptopanic.com/search?q=Why%20Bitcoin%E2%80%99s%20Price%20Still%20Controls%20the%20Crypto%20Industry%2C%20According%20to%20Novogratz", "source": "CryptoPanic", "time": "12-30 18:52"}], "-3": [{"title": "Bitcoin struggles to recover as year-end approaches", "url": "https://cryptopanic.com/search?q=Bitcoin%20struggles%20to%20recover%20as%20year-end%20approaches", "source": "CryptoPanic", "time": "12-30 20:49"}, {"title": "Bitcoin News: Rig Prices Drop, Defying ‘BTC Up & Hardware Up’ Pattern", "url": "https://cryptopanic.com/search?q=Bitcoin%20News%3A%20Rig%20Prices%20Drop%2C%20Defying%20%E2%80%98BTC%20Up%20%26%20Hardware%20Up%E2%80%99%20Pattern", "source": "CryptoPanic", "time": "12-30 20:00"}, {"title": "Bitcoin Retreats Below $90,000 as Oil Prices Climb and Macro Pressure Builds", "url": "https://cryptopanic.com/search?q=Bitcoin%20Retreats%20Below%20%2490%2C000%20as%20Oil%20Prices%20Climb%20and%20Macro%20Pressure%20Builds", "source": "CryptoPanic", "time": "12-30 18:49"}], "-1": [{"title": "Crypto Markets Trade Mostly Flat as Year-End Activity Remains Light", "url": "https://cryptopanic.com/search?q=Crypto%20Markets%20Trade%20Mostly%20Flat%20as%20Year-End%20Activity%20Remains%20Light", "source": "CryptoPanic", "time": "12-30 20:32"}, {"title": "Bitcoin order books just exposed the “wild” mechanics secretly crushing every rally before it starts", "url": "https://cryptopanic.com/search?q=Bitcoin%20order%20books%20just%20exposed%20the%20%E2%80%9Cwild%E2%80%9D%20mechanics%20secretly%20crushing%20every%20rally%20before%20it%20starts", "source": "CryptoPanic", "time": "12-30 19:45"}], "1": [{"title": "Bitcoin and Gold at a Turning Point as Leadership Hangs in the Balance", "url": "https://cryptopanic.com/search?q=Bitcoin%20and%20Gold%20at%20a%20Turning%20Point%20as%20Leadership%20Hangs%20in%20the%20Balance", "source": "CryptoPanic", "time": "12-30 19:33"}]};
+        window.plotlyChart = null;
+
+        const sentimentLabels = {
+            '-3': '🔴 极度负面', '-2': '🟠 负面', '-1': '🟡 轻微负面',
+            '0': '⚪ 中性', '1': '🟢 轻微正面', '2': '🟢 正面', '3': '🟢 极度正面'
+        };
+
+        // 调试：打印新闻数据
+        console.log('加载的新闻数据:', window.newsData);
+
+        function log(msg) {
+            console.log('[BTC-APP]', msg);
+            const box = document.getElementById('debugBox');
+            if (box) {
+                box.innerHTML = '🔍 ' + msg;
+            }
+        }
+
+        function getSentimentClass(score) {
+            score = parseInt(score);
+            return score > 0 ? 'sentiment-positive' : score < 0 ? 'sentiment-negative' : 'sentiment-neutral';
+        }
+
+        // 修改点击行为：复制标题并使用 Google "I'm Feeling Lucky" 作为 fallback，如果需要
+        function handleNewsClick(title, url) {
+            // 首先尝试复制标题到剪贴板
+            navigator.clipboard.writeText(title).then(() => {
+                console.log('标题已复制到剪贴板:', title);
+            }).catch(err => {
+                console.error('复制失败:', err);
+            });
+
+            // 如果 URL 是 CryptoPanic 的，改用 Google Lucky 搜索标题以获取全文
+            if (url.includes('cryptopanic.com')) {
+                const searchQuery = encodeURIComponent(title);
+                const googleLuckyUrl = `https://www.google.com/search?q=${searchQuery}&btnI`;
+                window.open(googleLuckyUrl, '_blank');
+            } else {
+                // 否则直接打开原 URL
+                window.open(url, '_blank');
+            }
+        }
+
+        window.showPopup = function(sentiment) {
+            log('显示新闻弹窗 - 情绪分数: ' + sentiment);
+
+            const sentimentStr = String(sentiment);
+            const label = sentimentLabels[sentimentStr] || ('情绪 ' + sentiment);
+            const badgeClass = getSentimentClass(sentiment);
+
+            document.getElementById('popupTitle').innerHTML = 
+                label + ' <span class="sentiment-badge ' + badgeClass + '">评分: ' + sentiment + '</span>';
+
+            const newsList = window.newsData[sentimentStr] || [];
+            const content = document.getElementById('popupContent');
+
+            if (newsList.length === 0) {
+                content.innerHTML = '<div class="no-news">该情绪评分暂无新闻</div>';
+            } else {
+                let html = '';
+                newsList.forEach(function(news) {
+                    // 验证URL
+                    const newsUrl = news.url || '#';
+                    console.log('新闻URL:', newsUrl, '来源:', news.source);
+
+                    html += '<div class="news-item">';
+                    html += '<div class="news-meta">';
+                    html += '<span class="news-source">📰 ' + (news.source || 'Unknown') + '</span>';
+                    html += '<span class="news-time">🕐 ' + news.time + '</span>';
+                    html += '</div>';
+                    html += '<a onclick="handleNewsClick(\'' + news.title.replace(/'/g, "\\'") + '\', \'' + newsUrl + '\'); return false;" class="news-link">';
+                    html += news.title + '<span class="news-arrow">→</span>';
+                    html += '</a></div>';
+                });
+                content.innerHTML = html;
+            }
+
+            document.getElementById('overlay').style.display = 'block';
+            const popup = document.getElementById('newsPopup');
+            popup.style.display = 'block';
+            popup.style.opacity = '0';
+            popup.style.transform = 'translate(-50%, -50%) scale(0.8)';
+
+            setTimeout(function() {
+                popup.style.transition = 'all 0.3s ease';
+                popup.style.opacity = '1';
+                popup.style.transform = 'translate(-50%, -50%) scale(1)';
+            }, 10);
+        };
+
+        window.closePopup = function() {
+            const popup = document.getElementById('newsPopup');
+            popup.style.opacity = '0';
+            popup.style.transform = 'translate(-50%, -50%) scale(0.8)';
+            setTimeout(function() {
+                popup.style.display = 'none';
+                document.getElementById('overlay').style.display = 'none';
+            }, 300);
+        };
+
+        // 点击遮罩层关闭弹窗
+        document.getElementById('overlay').addEventListener('click', function(e) {
+            if (e.target.id === 'overlay') {
+                window.closePopup();
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') window.closePopup();
+        });
+
+        // 初始化Plotly图表
+        function initChart() {
+            log('开始初始化图表...');
+
+            try {
+                const figData = {"data":[{"line":{"color":"#3498db","width":2},"mode":"lines","name":"\u5386\u53f2\u6536\u76d8\u4ef7","x":["2025-12-24T21:00:00+00:00","2025-12-24T22:00:00+00:00","2025-12-24T23:00:00+00:00","2025-12-25T00:00:00+00:00","2025-12-25T01:00:00+00:00","2025-12-25T02:00:00+00:00","2025-12-25T03:00:00+00:00","2025-12-25T04:00:00+00:00","2025-12-25T05:00:00+00:00","2025-12-25T06:00:00+00:00","2025-12-25T07:00:00+00:00","2025-12-25T08:00:00+00:00","2025-12-25T09:00:00+00:00","2025-12-25T10:00:00+00:00","2025-12-25T11:00:00+00:00","2025-12-25T12:00:00+00:00","2025-12-25T13:00:00+00:00","2025-12-25T14:00:00+00:00","2025-12-25T15:00:00+00:00","2025-12-25T16:00:00+00:00","2025-12-25T17:00:00+00:00","2025-12-25T18:00:00+00:00","2025-12-25T19:00:00+00:00","2025-12-25T20:00:00+00:00","2025-12-25T21:00:00+00:00","2025-12-25T22:00:00+00:00","2025-12-25T23:00:00+00:00","2025-12-26T00:00:00+00:00","2025-12-26T01:00:00+00:00","2025-12-26T02:00:00+00:00","2025-12-26T03:00:00+00:00","2025-12-26T04:00:00+00:00","2025-12-26T05:00:00+00:00","2025-12-26T06:00:00+00:00","2025-12-26T07:00:00+00:00","2025-12-26T08:00:00+00:00","2025-12-26T09:00:00+00:00","2025-12-26T10:00:00+00:00","2025-12-26T11:00:00+00:00","2025-12-26T12:00:00+00:00","2025-12-26T13:00:00+00:00","2025-12-26T14:00:00+00:00","2025-12-26T15:00:00+00:00","2025-12-26T16:00:00+00:00","2025-12-26T17:00:00+00:00","2025-12-26T18:00:00+00:00","2025-12-26T19:00:00+00:00","2025-12-26T20:00:00+00:00","2025-12-26T21:00:00+00:00","2025-12-26T22:00:00+00:00","2025-12-26T23:00:00+00:00","2025-12-27T00:00:00+00:00","2025-12-27T01:00:00+00:00","2025-12-27T02:00:00+00:00","2025-12-27T03:00:00+00:00","2025-12-27T04:00:00+00:00","2025-12-27T05:00:00+00:00","2025-12-27T06:00:00+00:00","2025-12-27T07:00:00+00:00","2025-12-27T08:00:00+00:00","2025-12-27T09:00:00+00:00","2025-12-27T10:00:00+00:00","2025-12-27T11:00:00+00:00","2025-12-27T12:00:00+00:00","2025-12-27T13:00:00+00:00","2025-12-27T14:00:00+00:00","2025-12-27T15:00:00+00:00","2025-12-27T16:00:00+00:00","2025-12-27T17:00:00+00:00","2025-12-27T18:00:00+00:00","2025-12-27T19:00:00+00:00","2025-12-27T20:00:00+00:00","2025-12-27T21:00:00+00:00","2025-12-27T22:00:00+00:00","2025-12-27T23:00:00+00:00","2025-12-28T00:00:00+00:00","2025-12-28T01:00:00+00:00","2025-12-28T02:00:00+00:00","2025-12-28T03:00:00+00:00","2025-12-28T04:00:00+00:00","2025-12-28T05:00:00+00:00","2025-12-28T06:00:00+00:00","2025-12-28T07:00:00+00:00","2025-12-28T08:00:00+00:00","2025-12-28T09:00:00+00:00","2025-12-28T10:00:00+00:00","2025-12-28T11:00:00+00:00","2025-12-28T12:00:00+00:00","2025-12-28T13:00:00+00:00","2025-12-28T14:00:00+00:00","2025-12-28T15:00:00+00:00","2025-12-28T16:00:00+00:00","2025-12-28T17:00:00+00:00","2025-12-28T18:00:00+00:00","2025-12-28T19:00:00+00:00","2025-12-28T20:00:00+00:00","2025-12-28T21:00:00+00:00","2025-12-28T22:00:00+00:00","2025-12-28T23:00:00+00:00","2025-12-29T00:00:00+00:00","2025-12-29T01:00:00+00:00","2025-12-29T02:00:00+00:00","2025-12-29T03:00:00+00:00","2025-12-29T04:00:00+00:00","2025-12-29T05:00:00+00:00","2025-12-29T06:00:00+00:00","2025-12-29T07:00:00+00:00","2025-12-29T08:00:00+00:00","2025-12-29T09:00:00+00:00","2025-12-29T10:00:00+00:00","2025-12-29T11:00:00+00:00","2025-12-29T12:00:00+00:00","2025-12-29T13:00:00+00:00","2025-12-29T14:00:00+00:00","2025-12-29T15:00:00+00:00","2025-12-29T16:00:00+00:00","2025-12-29T17:00:00+00:00","2025-12-29T18:00:00+00:00","2025-12-29T19:00:00+00:00","2025-12-29T20:00:00+00:00","2025-12-29T21:00:00+00:00","2025-12-29T22:00:00+00:00","2025-12-29T23:00:00+00:00","2025-12-30T00:00:00+00:00","2025-12-30T01:00:00+00:00","2025-12-30T02:00:00+00:00","2025-12-30T03:00:00+00:00","2025-12-30T04:00:00+00:00","2025-12-30T05:00:00+00:00","2025-12-30T06:00:00+00:00","2025-12-30T07:00:00+00:00","2025-12-30T08:00:00+00:00","2025-12-30T09:00:00+00:00","2025-12-30T10:00:00+00:00","2025-12-30T11:00:00+00:00","2025-12-30T12:00:00+00:00","2025-12-30T13:00:00+00:00","2025-12-30T14:00:00+00:00","2025-12-30T15:00:00+00:00","2025-12-30T16:00:00+00:00","2025-12-30T17:00:00+00:00","2025-12-30T18:00:00+00:00","2025-12-30T19:00:00+00:00","2025-12-30T20:00:00+00:00","2025-12-30T21:00:00+00:00","2025-12-30T22:00:00+00:00","2025-12-30T23:00:00+00:00","2025-12-31T00:00:00+00:00","2025-12-31T01:00:00+00:00","2025-12-31T02:00:00+00:00","2025-12-31T03:00:00+00:00","2025-12-31T04:00:00+00:00","2025-12-31T05:00:00+00:00","2025-12-31T06:00:00+00:00","2025-12-31T07:00:00+00:00","2025-12-31T08:00:00+00:00","2025-12-31T09:00:00+00:00","2025-12-31T10:00:00+00:00","2025-12-31T11:00:00+00:00","2025-12-31T12:00:00+00:00","2025-12-31T13:00:00+00:00","2025-12-31T14:00:00+00:00","2025-12-31T15:00:00+00:00","2025-12-31T16:00:00+00:00","2025-12-31T17:00:00+00:00","2025-12-31T18:00:00+00:00","2025-12-31T19:00:00+00:00","2025-12-31T20:00:00+00:00"],"y":[87696.33,88009.81,87669.45,87568.37,87699.99,87892.66,87840.42,87773.33,87750.55,87836.42,87837.59,87584.65,87526.48,87414.14,87519.44,87566.0,87638.25,87718.21,88371.27,88086.72,88139.08,88241.26,88151.18,87892.69,87901.21,87650.0,87225.27,87120.0,87432.26,89199.99,88844.87,88969.24,88996.58,89124.24,88470.75,88742.28,88811.76,88748.34,88533.42,88678.9,88992.88,87380.43,87137.81,86855.82,87331.91,87277.77,87501.83,87585.77,87470.59,87550.0,87369.56,87401.07,87475.03,87446.02,87514.22,87470.19,87506.0,87469.02,87539.26,87593.0,87618.91,87503.01,87475.98,87474.28,87452.78,87544.9,87551.25,87498.41,87562.58,87500.01,87569.39,87555.92,87668.22,87565.99,87877.01,87854.96,87785.96,87810.78,87740.01,87724.87,87657.93,87732.0,87730.85,87805.0,87800.0,87856.91,87883.25,87850.6,87896.59,87910.0,87836.27,87814.04,87760.0,87598.49,87520.75,87514.76,87588.37,87900.09,87952.71,88295.69,88445.57,89163.25,90123.55,90143.06,89984.0,89777.26,89617.71,89555.1,88100.05,87780.01,87567.66,87397.0,87387.71,87429.96,87691.62,87627.11,87849.99,87464.77,87366.23,87212.01,87337.85,87351.05,87237.13,87250.23,87308.23,87111.0,87379.0,87300.0,87255.97,87443.17,87502.85,87872.68,87992.7,87949.51,87903.89,88023.54,88110.02,88875.83,89016.35,88742.63,88371.34,88304.0,88226.16,87947.15,88287.27,88430.19,88485.49,88255.54,88649.33,88673.6,88453.04,88325.06,88463.09,88512.92,88613.12,88434.65,88660.1,88847.26,89011.52,88775.96,88991.88,88479.99,87953.97,87656.98,87620.82,87684.07,87541.85,87668.0],"type":"scatter","xaxis":"x","yaxis":"y"},{"line":{"color":"#95a5a6","dash":"dash","width":2},"mode":"lines","name":"\u7eaf Kronos \u9884\u6d4b","x":["2025-12-31T21:00:00+00:00","2025-12-31T22:00:00+00:00","2025-12-31T23:00:00+00:00","2026-01-01T00:00:00+00:00","2026-01-01T01:00:00+00:00","2026-01-01T02:00:00+00:00","2026-01-01T03:00:00+00:00","2026-01-01T04:00:00+00:00","2026-01-01T05:00:00+00:00","2026-01-01T06:00:00+00:00","2026-01-01T07:00:00+00:00","2026-01-01T08:00:00+00:00","2026-01-01T09:00:00+00:00","2026-01-01T10:00:00+00:00","2026-01-01T11:00:00+00:00","2026-01-01T12:00:00+00:00","2026-01-01T13:00:00+00:00","2026-01-01T14:00:00+00:00","2026-01-01T15:00:00+00:00","2026-01-01T16:00:00+00:00","2026-01-01T17:00:00+00:00","2026-01-01T18:00:00+00:00","2026-01-01T19:00:00+00:00","2026-01-01T20:00:00+00:00","2026-01-01T21:00:00+00:00","2026-01-01T22:00:00+00:00","2026-01-01T23:00:00+00:00","2026-01-02T00:00:00+00:00","2026-01-02T01:00:00+00:00","2026-01-02T02:00:00+00:00","2026-01-02T03:00:00+00:00","2026-01-02T04:00:00+00:00","2026-01-02T05:00:00+00:00","2026-01-02T06:00:00+00:00","2026-01-02T07:00:00+00:00","2026-01-02T08:00:00+00:00","2026-01-02T09:00:00+00:00","2026-01-02T10:00:00+00:00","2026-01-02T11:00:00+00:00","2026-01-02T12:00:00+00:00","2026-01-02T13:00:00+00:00","2026-01-02T14:00:00+00:00","2026-01-02T15:00:00+00:00","2026-01-02T16:00:00+00:00","2026-01-02T17:00:00+00:00","2026-01-02T18:00:00+00:00","2026-01-02T19:00:00+00:00","2026-01-02T20:00:00+00:00","2026-01-02T21:00:00+00:00","2026-01-02T22:00:00+00:00","2026-01-02T23:00:00+00:00","2026-01-03T00:00:00+00:00","2026-01-03T01:00:00+00:00","2026-01-03T02:00:00+00:00","2026-01-03T03:00:00+00:00","2026-01-03T04:00:00+00:00","2026-01-03T05:00:00+00:00","2026-01-03T06:00:00+00:00","2026-01-03T07:00:00+00:00","2026-01-03T08:00:00+00:00","2026-01-03T09:00:00+00:00","2026-01-03T10:00:00+00:00","2026-01-03T11:00:00+00:00","2026-01-03T12:00:00+00:00","2026-01-03T13:00:00+00:00","2026-01-03T14:00:00+00:00","2026-01-03T15:00:00+00:00","2026-01-03T16:00:00+00:00","2026-01-03T17:00:00+00:00","2026-01-03T18:00:00+00:00","2026-01-03T19:00:00+00:00","2026-01-03T20:00:00+00:00"],"y":[87539.953125,87543.7890625,87452.03125,87452.015625,87518.546875,87506.4921875,87496.0078125,87494.8828125,87479.7265625,87468.796875,87423.203125,87380.3125,87395.3515625,87408.3515625,87402.1171875,87323.8828125,87333.5859375,87308.8984375,87352.625,87286.453125,87333.015625,87323.1328125,87312.125,87299.0234375,87298.96875,87295.90625,87276.8828125,87265.1953125,87256.1484375,87245.0625,87240.625,87237.4765625,87218.1640625,87228.625,87227.375,87228.125,87225.0234375,87211.2265625,87219.453125,87222.796875,87221.4453125,87227.15625,87225.25,87229.1328125,87228.8125,87228.40625,87226.171875,87228.2109375,87225.734375,87223.96875,87217.515625,87213.421875,87210.9921875,87209.5,87212.9140625,87214.3984375,87223.5234375,87217.9765625,87211.96875,87214.265625,87220.8828125,87217.671875,87222.515625,87215.515625,87218.0625,87223.8515625,87222.6015625,87222.5546875,87222.5,87216.71875,87223.0625,87215.8671875],"type":"scatter","xaxis":"x","yaxis":"y"},{"line":{"color":"#e74c3c","width":2},"mode":"lines","name":"Kronos + \u65b0\u95fb\u60c5\u7eea","x":["2025-12-31T21:00:00+00:00","2025-12-31T22:00:00+00:00","2025-12-31T23:00:00+00:00","2026-01-01T00:00:00+00:00","2026-01-01T01:00:00+00:00","2026-01-01T02:00:00+00:00","2026-01-01T03:00:00+00:00","2026-01-01T04:00:00+00:00","2026-01-01T05:00:00+00:00","2026-01-01T06:00:00+00:00","2026-01-01T07:00:00+00:00","2026-01-01T08:00:00+00:00","2026-01-01T09:00:00+00:00","2026-01-01T10:00:00+00:00","2026-01-01T11:00:00+00:00","2026-01-01T12:00:00+00:00","2026-01-01T13:00:00+00:00","2026-01-01T14:00:00+00:00","2026-01-01T15:00:00+00:00","2026-01-01T16:00:00+00:00","2026-01-01T17:00:00+00:00","2026-01-01T18:00:00+00:00","2026-01-01T19:00:00+00:00","2026-01-01T20:00:00+00:00","2026-01-01T21:00:00+00:00","2026-01-01T22:00:00+00:00","2026-01-01T23:00:00+00:00","2026-01-02T00:00:00+00:00","2026-01-02T01:00:00+00:00","2026-01-02T02:00:00+00:00","2026-01-02T03:00:00+00:00","2026-01-02T04:00:00+00:00","2026-01-02T05:00:00+00:00","2026-01-02T06:00:00+00:00","2026-01-02T07:00:00+00:00","2026-01-02T08:00:00+00:00","2026-01-02T09:00:00+00:00","2026-01-02T10:00:00+00:00","2026-01-02T11:00:00+00:00","2026-01-02T12:00:00+00:00","2026-01-02T13:00:00+00:00","2026-01-02T14:00:00+00:00","2026-01-02T15:00:00+00:00","2026-01-02T16:00:00+00:00","2026-01-02T17:00:00+00:00","2026-01-02T18:00:00+00:00","2026-01-02T19:00:00+00:00","2026-01-02T20:00:00+00:00","2026-01-02T21:00:00+00:00","2026-01-02T22:00:00+00:00","2026-01-02T23:00:00+00:00","2026-01-03T00:00:00+00:00","2026-01-03T01:00:00+00:00","2026-01-03T02:00:00+00:00","2026-01-03T03:00:00+00:00","2026-01-03T04:00:00+00:00","2026-01-03T05:00:00+00:00","2026-01-03T06:00:00+00:00","2026-01-03T07:00:00+00:00","2026-01-03T08:00:00+00:00","2026-01-03T09:00:00+00:00","2026-01-03T10:00:00+00:00","2026-01-03T11:00:00+00:00","2026-01-03T12:00:00+00:00","2026-01-03T13:00:00+00:00","2026-01-03T14:00:00+00:00","2026-01-03T15:00:00+00:00","2026-01-03T16:00:00+00:00","2026-01-03T17:00:00+00:00","2026-01-03T18:00:00+00:00","2026-01-03T19:00:00+00:00","2026-01-03T20:00:00+00:00"],"y":[87539.953125,87543.7890625,87452.03125,87452.015625,87518.546875,87506.4921875,87496.0078125,87494.8828125,87479.7265625,87468.796875,87423.203125,87380.3125,87395.3515625,87408.3515625,87402.1171875,87323.8828125,87333.5859375,87308.8984375,87352.625,87286.453125,87333.015625,87323.1328125,87312.125,87299.0234375,86871.56754882813,86877.61336588542,86867.77242431641,86865.22983398437,86865.31360595702,86863.3653515625,86868.03483072917,86873.98707682292,86863.8402709961,86883.34502604167,86891.18615885417,86901.01953125,86907.01553955078,86902.35346842448,86919.63625488282,86932.05421875,86939.7927286784,86954.57138671874,86961.75705729166,86974.71450846354,86983.48146484375,86992.16264973959,86999.02038574219,87010.14041015625,87016.75605305989,87024.08048828125,87026.72730957031,87031.72724609375,87038.38709879557,87045.9821875,87058.47452718098,87069.04110677083,87087.2366821289,87090.78368001302,87093.86920898438,87105.24779296876,87120.94221761067,87126.82013346354,87140.74451660155,87142.83602864583,87154.46599609376,87169.33665527344,87177.1731241862,87186.21195638021,87195.24296875,87198.54860026042,87213.97676432291,87215.8671875],"type":"scatter","xaxis":"x","yaxis":"y"},{"hovertemplate":"\u003cb\u003e\u60c5\u7eea\u5206\u6570: %{x}\u003c\u002fb\u003e\u003cbr\u003e\u65b0\u95fb\u6570\u91cf: %{y}\u003cbr\u003e\u003ci\u003e\ud83d\udc46 \u70b9\u51fb\u67e5\u770b\u65b0\u95fb\u8be6\u60c5\u003c\u002fi\u003e\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":["#e74c3c","#e74c3c","#f39c12","#95a5a6","#27ae60"]},"name":"\u65b0\u95fb\u6570\u91cf","text":["3","3","2","11","1"],"textposition":"outside","x":[-3,-2,-1,0,1],"y":[3,3,2,11,1],"type":"bar","xaxis":"x2","yaxis":"y2"}],"layout":{"template":{"data":{"barpolar":[{"marker":{"line":{"color":"rgb(17,17,17)","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"bar":[{"error_x":{"color":"#f2f5fa"},"error_y":{"color":"#f2f5fa"},"marker":{"line":{"color":"rgb(17,17,17)","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"carpet":[{"aaxis":{"endlinecolor":"#A2B1C6","gridcolor":"#506784","linecolor":"#506784","minorgridcolor":"#506784","startlinecolor":"#A2B1C6"},"baxis":{"endlinecolor":"#A2B1C6","gridcolor":"#506784","linecolor":"#506784","minorgridcolor":"#506784","startlinecolor":"#A2B1C6"},"type":"carpet"}],"choropleth":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"choropleth"}],"contourcarpet":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"contourcarpet"}],"contour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"contour"}],"heatmap":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"heatmap"}],"histogram2dcontour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2dcontour"}],"histogram2d":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2d"}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"mesh3d":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"mesh3d"}],"parcoords":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"parcoords"}],"pie":[{"automargin":true,"type":"pie"}],"scatter3d":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatter3d"}],"scattercarpet":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattercarpet"}],"scattergeo":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattergeo"}],"scattergl":[{"marker":{"line":{"color":"#283442"}},"type":"scattergl"}],"scattermapbox":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattermapbox"}],"scattermap":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattermap"}],"scatterpolargl":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolargl"}],"scatterpolar":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolar"}],"scatter":[{"marker":{"line":{"color":"#283442"}},"type":"scatter"}],"scatterternary":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterternary"}],"surface":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"surface"}],"table":[{"cells":{"fill":{"color":"#506784"},"line":{"color":"rgb(17,17,17)"}},"header":{"fill":{"color":"#2a3f5f"},"line":{"color":"rgb(17,17,17)"}},"type":"table"}]},"layout":{"annotationdefaults":{"arrowcolor":"#f2f5fa","arrowhead":0,"arrowwidth":1},"autotypenumbers":"strict","coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]],"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]},"colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#f2f5fa"},"geo":{"bgcolor":"rgb(17,17,17)","lakecolor":"rgb(17,17,17)","landcolor":"rgb(17,17,17)","showlakes":true,"showland":true,"subunitcolor":"#506784"},"hoverlabel":{"align":"left"},"hovermode":"closest","mapbox":{"style":"dark"},"paper_bgcolor":"rgb(17,17,17)","plot_bgcolor":"rgb(17,17,17)","polar":{"angularaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"bgcolor":"rgb(17,17,17)","radialaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""}},"scene":{"xaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"},"yaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"},"zaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"}},"shapedefaults":{"line":{"color":"#f2f5fa"}},"sliderdefaults":{"bgcolor":"#C8D4E3","bordercolor":"rgb(17,17,17)","borderwidth":1,"tickwidth":0},"ternary":{"aaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"baxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"bgcolor":"rgb(17,17,17)","caxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""}},"title":{"x":0.05},"updatemenudefaults":{"bgcolor":"#506784","borderwidth":0},"xaxis":{"automargin":true,"gridcolor":"#283442","linecolor":"#506784","ticks":"","title":{"standoff":15},"zerolinecolor":"#283442","zerolinewidth":2},"yaxis":{"automargin":true,"gridcolor":"#283442","linecolor":"#506784","ticks":"","title":{"standoff":15},"zerolinecolor":"#283442","zerolinewidth":2}}},"xaxis":{"anchor":"y","domain":[0.0,1.0],"range":["2025-12-24T21:00:00+00:00","2026-01-03T20:00:00+00:00"],"tickformat":"%m-%d %H:%M","tickangle":45},"yaxis":{"anchor":"x","domain":[0.384,1.0],"range":[86421.5409,90593.7753]},"xaxis2":{"anchor":"y2","domain":[0.0,1.0],"title":{"text":"\u60c5\u7eea\u5206\u6570 (-3\u6781\u8d1f ~ +3\u6781\u6b63)"},"tickmode":"linear","tick0":-3,"dtick":1},"yaxis2":{"anchor":"x2","domain":[0.0,0.264],"title":{"text":"\u65b0\u95fb\u6570\u91cf"}},"annotations":[{"font":{"size":16},"showarrow":false,"text":"BTC\u002fUSDT \u4ef7\u683c\u9884\u6d4b\uff08\u8fc7\u53bb7\u5929 + \u672a\u67653\u5929\uff09","x":0.5,"xanchor":"center","xref":"paper","y":1.0,"yanchor":"bottom","yref":"paper"},{"font":{"size":16},"showarrow":false,"text":"\ud83d\udcca \u70b9\u51fb\u67f1\u5b50\u67e5\u770b\u65b0\u95fb\u8be6\u60c5","x":0.5,"xanchor":"center","xref":"paper","y":0.264,"yanchor":"bottom","yref":"paper"},{"bgcolor":"rgba(0,0,0,0.5)","font":{"color":"yellow","size":10},"showarrow":false,"text":"\u2190 \u5386\u53f2 | \u9884\u6d4b \u2192","x":"2025-12-31T20:00:00+00:00","xref":"x","y":90593.7753,"yref":"y"},{"bgcolor":"rgba(0,0,0,0.7)","bordercolor":"#00d4ff","borderpad":8,"borderwidth":2,"font":{"color":"white","size":12},"showarrow":false,"text":"\u003cb\u003e\u77ed\u671f\u60c5\u7eea (0-24h):\u003c\u002fb\u003e 0.00\u003cbr\u003e\u003cb\u003e\u4e2d\u671f\u60c5\u7eea (24-72h):\u003c\u002fb\u003e -0.50","x":0.02,"xref":"paper","y":0.95,"yref":"paper"}],"shapes":[{"line":{"color":"yellow","dash":"dot","width":2},"type":"line","x0":"2025-12-31T20:00:00+00:00","x1":"2025-12-31T20:00:00+00:00","xref":"x","y0":86421.5409,"y1":90593.7753,"yref":"y"}],"legend":{"orientation":"h","yanchor":"bottom","y":1.02,"xanchor":"right","x":1,"bgcolor":"rgba(0,0,0,0.5)"},"height":750,"showlegend":true,"hovermode":"closest","paper_bgcolor":"rgba(26,26,46,1)","plot_bgcolor":"rgba(22,33,62,1)"}};
+                log('图表数据已加载，trace数量: ' + figData.data.length);
+
+                Plotly.newPlot('plotlyChart', figData.data, figData.layout, {responsive: true})
+                    .then(function(gd) {
+                        log('图表渲染完成！');
+                        window.plotlyChart = gd;
+
+                        // 绑定点击事件
+                        gd.on('plotly_click', function(data) {
+                            log('🎯 检测到点击！');
+                            console.log('点击数据:', data);
+
+                            if (data && data.points && data.points.length > 0) {
+                                const point = data.points[0];
+                                log('点击位置: curveNumber=' + point.curveNumber + ', x=' + point.x + ', type=' + point.data.type);
+
+                                if (point.data.type === 'bar') {
+                                    log('✅ 这是柱状图！打开新闻弹窗');
+                                    window.showPopup(point.x);
+                                } else {
+                                    log('这是' + point.data.type + '，不是柱状图');
+                                }
+                            }
+                        });
+
+                        log('✅ 事件绑定成功！请点击下方柱状图');
+                    })
+                    .catch(function(err) {
+                        log('❌ 图表渲染失败: ' + err.message);
+                        console.error(err);
+                    });
+
+            } catch (err) {
+                log('❌ 初始化失败: ' + err.message);
+                console.error(err);
+            }
+        }
+
+        // 页面加载完成后初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initChart);
+        } else {
+            initChart();
+        }
+
+        log('脚本已加载，等待初始化...');
+    </script>
+</body>
+</html>
